@@ -484,7 +484,7 @@ fn build(&self, app: &mut App) {
         // 把这个Node用ViewNodeRunner<T>驱动，并且添加到Core2d这个Graph里面，以MonochromerNodeLabel表示MonochromerNode
         .add_render_graph_node::<ViewNodeRunner<MonochromerNode>>(Core2d, 
 MonochromerNodeLabel)
-        // 把这个Node连接进去，表示它在MainPass后面，Bloom前面执行
+        // 把这个Node连接进去，表示它在MainPass后面，Bloom前面执行。其实只要放在MainPass后面，EndMainPassPostProcessing前面就可以了，我这随便放的
         .add_render_graph_edges(
             Core2d,
             (Node2d::MainPass, MonochromerNodeLabel, Node2d::Bloom),
@@ -514,3 +514,9 @@ commands.spawn((
 ```
 
 最后的最后，`cargo run`，你就会看到你的视野正在闪烁，~~是不是感觉快似了~~
+
+如果此时你尝试输出Render Graph，你就会得到：
+
+![](img/post_process_graph.png)
+
+看到`MonochromerNodeLable`和`ViewNodeRunner<MonochomerNode>`了吗？那就是你努力的成果！

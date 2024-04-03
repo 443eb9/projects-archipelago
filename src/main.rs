@@ -13,14 +13,15 @@ mod ch1_custom_material;
 mod ch2_post_processing;
 
 fn main() {
-    App::new()
-        .add_plugins((
-            DefaultPlugins,
-            // ch1_custom_material::Chapter1Plugin,
-            ch2_post_processing::Chapter2Plugin,
-        ))
-        .add_systems(Startup, setup_camera)
-        .run();
+    let mut app = App::new();
+    app.add_plugins((
+        DefaultPlugins,
+        // ch1_custom_material::Chapter1Plugin,
+        ch2_post_processing::Chapter2Plugin,
+    ))
+    .add_systems(Startup, setup_camera);
+    bevy_mod_debugdump::print_render_graph(&mut app);
+    app.run();
 }
 
 fn setup_camera(
