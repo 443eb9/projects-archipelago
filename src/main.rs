@@ -8,19 +8,23 @@ use bevy::{
     sprite::{ColorMaterial, ColorMesh2dBundle, Mesh2dHandle},
     DefaultPlugins,
 };
+use bevy_inspector_egui::quick::WorldInspectorPlugin;
 
 mod ch1_custom_material;
 mod ch2_post_processing;
+mod ch3_tilemap;
 
 fn main() {
     let mut app = App::new();
     app.add_plugins((
         DefaultPlugins,
+        WorldInspectorPlugin::default(),
         // ch1_custom_material::Chapter1Plugin,
-        ch2_post_processing::Chapter2Plugin,
+        // ch2_post_processing::Chapter2Plugin,
+        ch3_tilemap::Chapter3Plugin,
     ))
     .add_systems(Startup, setup_camera);
-    bevy_mod_debugdump::print_render_graph(&mut app);
+    // bevy_mod_debugdump::print_render_graph(&mut app);
     app.run();
 }
 
