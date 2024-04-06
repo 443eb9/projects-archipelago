@@ -17,8 +17,8 @@ pub struct TilemapTexture {
 
 #[derive(Component)]
 pub struct TilemapStorage {
-    storage: Vec<Option<Entity>>,
-    size: UVec2,
+    pub(crate) storage: Vec<Option<Entity>>,
+    pub(crate) size: UVec2,
 }
 
 impl TilemapStorage {
@@ -39,7 +39,7 @@ impl TilemapStorage {
 #[derive(Component, Default, Clone)]
 pub struct TilemapAnimation {
     // fps frame1 frame2 frame3 fps frame1 frame2 ...
-    buffer: Vec<u32>,
+    pub(crate) buffer: Vec<u32>,
 }
 
 impl TilemapAnimation {
@@ -60,8 +60,8 @@ pub enum TileTexture {
 
 #[derive(Clone, Copy)]
 pub struct TileAnimation {
-    start: u32,
-    length: u32,
+    pub(crate) start: u32,
+    pub(crate) length: u32,
 }
 
 #[derive(Component)]

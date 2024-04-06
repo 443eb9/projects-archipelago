@@ -7,9 +7,13 @@ use bevy::{
     },
     math::{UVec2, Vec2},
     render::{
-        color::Color, render_resource::Shader, ExtractSchedule, Render, RenderApp, RenderSet,
+        color::Color,
+        render_resource::{Shader, SpecializedRenderPipelines},
+        ExtractSchedule, Render, RenderApp, RenderSet,
     },
 };
+
+use crate::ch3_tilemap::render::{TilemapAnimationBuffers, TilemapMeshes, TilemapUniformBuffer};
 
 use self::{
     render::{queue_tilemaps, TilemapPipeline},
@@ -43,13 +47,26 @@ impl Plugin for Chapter3Plugin {
                 ExtractSchedule,
                 (render::extract_tilemaps, render::extract_tiles),
             )
-            .add_systems(Render, queue_tilemaps.in_set(RenderSet::Queue));
+            .add_systems(Render, render::queue_tilemaps.in_set(RenderSet::Queue))
+            .add_systems(
+                Render,
+                (
+                    render::prepare_tilemap_bind_groups,
+                    render::prepare_tilemap_meshes,
+                )
+                    .in_set(RenderSet::Prepare),
+            )
+            .init_resource::<TilemapMeshes>()
+            .init_resource::<TilemapUniformBuffer>()
+            .init_resource::<TilemapAnimationBuffers>();
     }
 
     fn finish(&self, app: &mut App) {
         let render_app = app.sub_app_mut(RenderApp);
 
-        render_app.init_resource::<TilemapPipeline>();
+        render_app
+            .init_resource::<TilemapPipeline>()
+            .init_resource::<SpecializedRenderPipelines<TilemapPipeline>>();
     }
 }
 

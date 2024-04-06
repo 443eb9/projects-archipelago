@@ -584,7 +584,7 @@ impl TilemapStorage {
 #[derive(Component, Default, Clone)]
 pub struct TilemapAnimation {
     // fps frame1 frame2 frame3 fps frame1 frame2 ...
-    buffer: Vec<u32>,
+    pub(crate) buffer: Vec<u32>,
 }
 
 impl TilemapAnimation {
@@ -796,7 +796,7 @@ fn build(&self, app: &mut App) {
 #[derive(ShaderType)]
 pub struct TilemapUniform {
     pub translation: Vec3,
-    pub slot_size: UVec2,
+    pub slot_size: Vec2,
 }
 
 #[derive(Resource)]
@@ -874,6 +874,7 @@ fn finish(&self, app: &mut App) {
 ```rust
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct TilemapPipelineKey {
+    pub msaa_sample_count: u32,
     pub has_texture: bool,
 }
 
@@ -886,9 +887,9 @@ impl SpecializedRenderPipeline for TilemapPipeline {
 }
 ```
 
-这里的`Key`里的内容，就是表示这张Tilemap是否携带材质。
+这里的`Key`里的内容，就是表示这张Tilemap是否携带材质，以及MSAA的采样数。
 
-接下来我们实现一下`specialize()`：
+接下来正式实现一下`specialize()`：
 
 ```rust
 fn specialize(&self, key: Self::Key) -> RenderPipelineDescriptor {
@@ -906,9 +907,9 @@ fn specialize(&self, key: Self::Key) -> RenderPipelineDescriptor {
         // index 索引
         VertexFormat::Sint32x2,
         // texture_index 材质
-        // If the y component is -1, then this is a animated tile.
+        // If the y component is NOT -1, then this is a animated tile.
         // So we need to consider the x component as start and y as length
-        // 如果y是-1的话就说明这是块使用动画的Tile，此时这个数据的含义就变成的动画的起始索引和长度
+        // 如果y不是-1的话就说明这是块使用动画的Tile，此时这个数据的含义就变成的动画的起始索引和长度
         VertexFormat::Sint32x2,
     ];
 
@@ -1013,8 +1014,14 @@ type DrawTilemap = ();
 
 > *这个空的`DrawTilemap`是干什么的？*
 
-是一个空的Draw Function。具体是什么我们待会介绍到底是什么。
+是一个空的Draw Function。具体是什么我们待会介绍。
+
+最后别忘了把这个System注册进Bevy：
+
+```rust
+render_app.add_systems(Render, queue_tilemaps.in_set(RenderSet::Queue));
+```
 
 ### Prepare
 
-
+现在Bevy已经知道有了这些渲染任务了，接下来就需要我们准备好渲染所需要的数据。
