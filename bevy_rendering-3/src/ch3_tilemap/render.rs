@@ -493,7 +493,12 @@ pub fn prepare_tilemap_meshes(
 
 // Draw
 
-type DrawTilemap = (SetItemPipeline, SetTilemapUniformBindGroup<1>);
+pub type DrawTilemap = (
+    SetItemPipeline,
+    SetTilemapUniformBindGroup<1>,
+    SetTilemapAnimationBindGroup<2>,
+    DrawTilemapMesh,
+);
 
 pub struct SetTilemapUniformBindGroup<const I: usize>;
 impl<const I: usize> RenderCommand<Transparent2d> for SetTilemapUniformBindGroup<I> {

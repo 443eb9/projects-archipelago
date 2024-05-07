@@ -1,9 +1,2 @@
-[package]
-name = "bevy_rendering"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-bevy = "0.13"
-bevy-inspector-egui = "0.23"
-bevy_mod_debugdump = "0.10"
+[workspace]
+members = ["bevy_rendering-3"]

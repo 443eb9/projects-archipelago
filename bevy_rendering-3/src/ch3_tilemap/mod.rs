@@ -1,6 +1,7 @@
 use bevy::{
     app::{App, Plugin, Startup},
     asset::{load_internal_asset, AssetServer, Handle},
+    core_pipeline::core_2d::Transparent2d,
     ecs::{
         schedule::IntoSystemConfigs,
         system::{Commands, Res},
@@ -8,12 +9,15 @@ use bevy::{
     math::{UVec2, Vec2},
     render::{
         color::Color,
+        render_phase::AddRenderCommand,
         render_resource::{Shader, SpecializedRenderPipelines},
         ExtractSchedule, Render, RenderApp, RenderSet,
     },
 };
 
-use crate::ch3_tilemap::render::{TilemapAnimationBuffers, TilemapMeshes, TilemapUniformBuffer};
+use crate::ch3_tilemap::render::{
+    DrawTilemap, TilemapAnimationBuffers, TilemapMeshes, TilemapUniformBuffer,
+};
 
 use self::{
     render::{queue_tilemaps, TilemapPipeline},
@@ -58,7 +62,8 @@ impl Plugin for Chapter3Plugin {
             )
             .init_resource::<TilemapMeshes>()
             .init_resource::<TilemapUniformBuffer>()
-            .init_resource::<TilemapAnimationBuffers>();
+            .init_resource::<TilemapAnimationBuffers>()
+            .add_render_command::<Transparent2d, DrawTilemap>();
     }
 
     fn finish(&self, app: &mut App) {
