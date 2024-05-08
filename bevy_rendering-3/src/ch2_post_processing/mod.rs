@@ -1,6 +1,6 @@
 use bevy::{
-    app::{App, Plugin},
-    asset::{load_internal_asset, Handle},
+    app::{App, Plugin, Startup},
+    asset::{load_internal_asset, Assets, Handle},
     core_pipeline::{
         core_2d::graph::{Core2d, Node2d},
         fullscreen_vertex_shader::fullscreen_shader_vertex_state,
@@ -8,15 +8,18 @@ use bevy::{
     ecs::{
         component::Component,
         query::QueryItem,
-        system::{lifetimeless::Read, Resource},
+        system::{lifetimeless::Read, Commands, ResMut, Resource},
         world::{FromWorld, World},
     },
+    math::primitives::Rectangle,
     render::{
+        color::Color,
         extract_component::{
             ComponentUniforms, DynamicUniformIndex, ExtractComponent, ExtractComponentPlugin,
             UniformComponentPlugin,
         },
         globals::{GlobalsBuffer, GlobalsUniform},
+        mesh::Mesh,
         render_graph::{
             NodeRunError, RenderGraphApp, RenderGraphContext, RenderLabel, ViewNode, ViewNodeRunner,
         },
@@ -32,6 +35,7 @@ use bevy::{
         view::ViewTarget,
         RenderApp,
     },
+    sprite::{ColorMaterial, ColorMesh2dBundle, Mesh2dHandle},
 };
 
 use bevy::render::render_resource::binding_types as binding;
@@ -44,7 +48,7 @@ impl Plugin for Chapter2Plugin {
     fn build(&self, app: &mut App) {
         load_internal_asset!(app, SHADER_HANDLE, "monochromer.wgsl", Shader::from_wgsl);
 
-        app.add_plugins((
+        app.add_systems(Startup, setup).add_plugins((
             ExtractComponentPlugin::<MonochromerSettings>::default(),
             UniformComponentPlugin::<MonochromerSettings>::default(),
         ));
@@ -64,6 +68,21 @@ impl Plugin for Chapter2Plugin {
 
         render_app.init_resource::<MonochromerPipeline>();
     }
+}
+
+fn setup(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+) {
+    commands.spawn(ColorMesh2dBundle {
+        mesh: Mesh2dHandle(meshes.add(Rectangle::new(200., 150.))),
+        material: materials.add(ColorMaterial {
+            color: Color::BLUE,
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
 }
 
 #[derive(Component, ExtractComponent, ShaderType, Clone)]

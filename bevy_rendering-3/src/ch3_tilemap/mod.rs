@@ -7,6 +7,7 @@ use bevy::{
         system::{Commands, Res},
     },
     math::{UVec2, Vec2},
+    prelude::SpatialBundle,
     render::{
         color::Color,
         render_phase::AddRenderCommand,
@@ -16,11 +17,11 @@ use bevy::{
 };
 
 use crate::ch3_tilemap::render::{
-    DrawTilemap, TilemapAnimationBuffers, TilemapMeshes, TilemapUniformBuffer,
+    DrawTilemap, TilemapAnimationBuffers, TilemapBindGroups, TilemapMeshes, TilemapUniformBuffer
 };
 
 use self::{
-    render::{queue_tilemaps, TilemapPipeline},
+    render::TilemapPipeline,
     tilemap::{
         Tile, TileTexture, TilemapAnimation, TilemapSlotSize, TilemapStorage, TilemapTexture,
     },
@@ -57,12 +58,14 @@ impl Plugin for Chapter3Plugin {
                 (
                     render::prepare_tilemap_bind_groups,
                     render::prepare_tilemap_meshes,
+                    render::prepare_tilemap_view_bind_groups,
                 )
                     .in_set(RenderSet::Prepare),
             )
             .init_resource::<TilemapMeshes>()
             .init_resource::<TilemapUniformBuffer>()
             .init_resource::<TilemapAnimationBuffers>()
+            .init_resource::<TilemapBindGroups>()
             .add_render_command::<Transparent2d, DrawTilemap>();
     }
 
@@ -82,19 +85,19 @@ fn tilemap_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
 
     let sample_anim = anim.add_animation(vec![0, 1, 2, 3], 10);
 
-    for x in 0..8 {
-        for y in 0..8 {
-            storage.set(
-                &mut commands,
-                UVec2 { x, y },
-                Tile {
-                    tilemap,
-                    texture: TileTexture::Animated(sample_anim),
-                    tint: Color::LIME_GREEN,
-                },
-            );
-        }
-    }
+    // for x in 0..8 {
+    //     for y in 0..8 {
+    //         storage.set(
+    //             &mut commands,
+    //             UVec2 { x, y },
+    //             Tile {
+    //                 tilemap,
+    //                 texture: TileTexture::Animated(sample_anim),
+    //                 tint: Color::LIME_GREEN,
+    //             },
+    //         );
+    //     }
+    // }
 
     for x in 8..16 {
         for y in 8..16 {
@@ -111,6 +114,7 @@ fn tilemap_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     }
 
     commands.entity(tilemap).insert((
+        SpatialBundle::default(),
         TilemapSlotSize(Vec2::splat(16.)),
         TilemapTexture {
             image: asset_server.load("tiles.png"),

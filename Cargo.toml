@@ -1,2 +1,3 @@
 [workspace]
-members = ["bevy_rendering-3"]
+members = ["bevy_rendering-3", "noise"]
+resolver = "1"

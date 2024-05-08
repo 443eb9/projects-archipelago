@@ -3,33 +3,33 @@ use bevy::{
     ecs::{
         component::Component,
         entity::{Entity, EntityHashMap},
-        query::{Changed, Or, ROQueryItem},
+        query::{Changed, Or, ROQueryItem, With},
         system::{
             lifetimeless::{Read, SRes},
             Commands, Query, Res, ResMut, Resource, SystemParamItem,
         },
         world::{FromWorld, World},
     },
-    math::{IVec2, UVec2, Vec2, Vec3, Vec4},
+    math::{IVec2, UVec2, Vec2, Vec3, Vec3Swizzles, Vec4},
     render::{
         mesh::{GpuBufferInfo, GpuMesh, Indices, Mesh, MeshVertexAttribute, PrimitiveTopology},
-        render_asset::RenderAssetUsages,
+        render_asset::{RenderAssetUsages, RenderAssets},
         render_phase::{
             DrawFunctions, RenderCommand, RenderCommandResult, RenderPhase, SetItemPipeline,
             TrackedRenderPass,
         },
         render_resource::{
-            BindGroup, BindGroupLayout, BindGroupLayoutEntries, BlendState, BufferInitDescriptor,
-            BufferUsages, ColorTargetState, ColorWrites, DynamicUniformBuffer, FilterMode,
-            FragmentState, GpuArrayBuffer, IndexFormat, MultisampleState, PipelineCache,
-            PrimitiveState, RenderPipelineDescriptor, Sampler, SamplerBindingType,
-            SamplerDescriptor, ShaderStages, ShaderType, SpecializedRenderPipeline,
-            SpecializedRenderPipelines, TextureFormat, TextureSampleType, VertexBufferLayout,
-            VertexFormat, VertexState, VertexStepMode,
+            BindGroup, BindGroupEntries, BindGroupLayout, BindGroupLayoutEntries, BlendState,
+            BufferInitDescriptor, BufferUsages, ColorTargetState, ColorWrites,
+            DynamicUniformBuffer, FilterMode, FragmentState, GpuArrayBuffer, IndexFormat,
+            MultisampleState, PipelineCache, PrimitiveState, RenderPipelineDescriptor, Sampler,
+            SamplerBindingType, SamplerDescriptor, ShaderStages, ShaderType,
+            SpecializedRenderPipeline, SpecializedRenderPipelines, TextureFormat,
+            TextureSampleType, VertexBufferLayout, VertexFormat, VertexState, VertexStepMode,
         },
         renderer::{RenderDevice, RenderQueue},
-        texture::BevyDefault,
-        view::Msaa,
+        texture::{BevyDefault, Image},
+        view::{Msaa, ViewUniform, ViewUniformOffset, ViewUniforms},
         Extract,
     },
     transform::components::GlobalTransform,
@@ -127,13 +127,14 @@ pub fn extract_tiles(
 
 #[derive(ShaderType)]
 pub struct TilemapUniform {
-    pub translation: Vec3,
+    pub translation: Vec2,
     pub slot_size: Vec2,
 }
 
 #[derive(Resource)]
 pub struct TilemapPipeline {
-    pub layout: BindGroupLayout,
+    pub view_layout: BindGroupLayout,
+    pub tilemap_layout: BindGroupLayout,
     pub linear_sampler: Sampler,
     pub nearest_sampler: Sampler,
 }
@@ -142,14 +143,22 @@ impl FromWorld for TilemapPipeline {
     fn from_world(world: &mut World) -> Self {
         let render_device = world.resource::<RenderDevice>();
 
-        let layout = render_device.create_bind_group_layout(
+        let view_layout = render_device.create_bind_group_layout(
+            "tilemap_view_layout",
+            &BindGroupLayoutEntries::single(
+                ShaderStages::VERTEX,
+                binding::uniform_buffer::<ViewUniform>(true),
+            ),
+        );
+
+        let tilemap_layout = render_device.create_bind_group_layout(
             "tilemap_layout",
             &BindGroupLayoutEntries::sequential(
                 ShaderStages::VERTEX_FRAGMENT,
                 (
+                    binding::uniform_buffer::<TilemapUniform>(true),
                     binding::texture_2d(TextureSampleType::Float { filterable: true }),
                     binding::sampler(SamplerBindingType::Filtering),
-                    binding::uniform_buffer::<TilemapUniform>(true),
                 ),
             ),
         );
@@ -171,7 +180,8 @@ impl FromWorld for TilemapPipeline {
         });
 
         Self {
-            layout,
+            view_layout,
+            tilemap_layout,
             linear_sampler,
             nearest_sampler,
         }
@@ -194,10 +204,10 @@ impl SpecializedRenderPipeline for TilemapPipeline {
         }
 
         let vertex_formats = vec![
-            // tint
-            VertexFormat::Float32x4,
             // index
             VertexFormat::Sint32x2,
+            // tint
+            VertexFormat::Float32x4,
             // texture_index
             // If the y component is NOT -1, then this is a animated tile.
             // So we need to consider the x component as start and y as length
@@ -206,7 +216,7 @@ impl SpecializedRenderPipeline for TilemapPipeline {
 
         RenderPipelineDescriptor {
             label: Some("tilemap_pipeline".into()),
-            layout: vec![self.layout.clone()],
+            layout: vec![self.view_layout.clone(), self.tilemap_layout.clone()],
             vertex: VertexState {
                 shader: TILEMAP_SHADER,
                 shader_defs: shader_defs.clone(),
@@ -283,10 +293,9 @@ pub struct TilemapAnimationBuffers {
     pub buffers: EntityHashMap<GpuArrayBuffer<u32>>,
 }
 
-#[derive(Resource, Default)]
-pub struct TilemapBindGroups {
-    pub uniforms: Option<BindGroup>,
-    pub animations: EntityHashMap<BindGroup>,
+#[derive(Component)]
+pub struct TilemapViewBindGroup {
+    pub value: BindGroup,
 }
 
 #[derive(Component)]
@@ -310,7 +319,7 @@ pub fn prepare_tilemap_bind_groups(
 
     for (tilemap_entity, tilemap) in &tilemaps_query {
         let offset = uniform_buffer.buffer.push(&TilemapUniform {
-            translation: tilemap.translation,
+            translation: tilemap.translation.xy(),
             slot_size: tilemap.slot_size.0,
         });
 
@@ -337,12 +346,34 @@ pub fn prepare_tilemap_bind_groups(
         .for_each(|b| b.write_buffer(&render_device, &render_queue));
 }
 
+pub fn prepare_tilemap_view_bind_groups(
+    mut commands: Commands,
+    views_query: Query<Entity, With<RenderPhase<Transparent2d>>>,
+    render_device: Res<RenderDevice>,
+    view_bindings: Res<ViewUniforms>,
+    pipeline: Res<TilemapPipeline>,
+) {
+    let Some(binding) = view_bindings.uniforms.binding() else {
+        return;
+    };
+
+    for view_entity in &views_query {
+        commands.entity(view_entity).insert(TilemapViewBindGroup {
+            value: render_device.create_bind_group(
+                "tilemap_view_bind_group",
+                &pipeline.view_layout,
+                &BindGroupEntries::single(binding.clone()),
+            ),
+        });
+    }
+}
+
 pub const TILEMAP_MESH_ATTR_INDEX: MeshVertexAttribute =
-    MeshVertexAttribute::new("index", 16541000341124, VertexFormat::Uint32x2);
+    MeshVertexAttribute::new("index", 89643186451, VertexFormat::Uint32x2);
 pub const TILEMAP_MESH_ATTR_TINT: MeshVertexAttribute =
-    MeshVertexAttribute::new("tint", 454210544510, VertexFormat::Float32x4);
+    MeshVertexAttribute::new("tint", 89643186452, VertexFormat::Float32x4);
 pub const TILEMAP_MESH_ATTR_TEX_IDX: MeshVertexAttribute =
-    MeshVertexAttribute::new("texture_index", 541009684125463, VertexFormat::Sint32x2);
+    MeshVertexAttribute::new("texture_index", 89643186453, VertexFormat::Sint32x2);
 
 #[derive(Clone)]
 pub struct MeshTile {
@@ -495,31 +526,68 @@ pub fn prepare_tilemap_meshes(
 
 pub type DrawTilemap = (
     SetItemPipeline,
+    // SetViewUniformBindGroup<0>,
     SetTilemapUniformBindGroup<1>,
-    SetTilemapAnimationBindGroup<2>,
+    // SetTilemapAnimationBindGroup<2>,
     DrawTilemapMesh,
 );
 
+pub struct SetViewUniformBindGroup<const I: usize>;
+impl<const I: usize> RenderCommand<Transparent2d> for SetViewUniformBindGroup<I> {
+    type Param = ();
+
+    type ViewQuery = (Read<ViewUniformOffset>, Read<TilemapViewBindGroup>);
+
+    type ItemQuery = ();
+
+    fn render<'w>(
+        _item: &Transparent2d,
+        (offset, bind_group): ROQueryItem<'w, Self::ViewQuery>,
+        _entity: Option<ROQueryItem<'w, Self::ItemQuery>>,
+        _param: SystemParamItem<'w, '_, Self::Param>,
+        pass: &mut TrackedRenderPass<'w>,
+    ) -> RenderCommandResult {
+        pass.set_bind_group(I, &bind_group.value, &[offset.offset]);
+
+        RenderCommandResult::Success
+    }
+}
+
 pub struct SetTilemapUniformBindGroup<const I: usize>;
 impl<const I: usize> RenderCommand<Transparent2d> for SetTilemapUniformBindGroup<I> {
-    type Param = SRes<TilemapBindGroups>;
+    type Param = (
+        SRes<RenderDevice>,
+        SRes<TilemapUniformBuffer>,
+        SRes<TilemapPipeline>,
+        SRes<RenderAssets<Image>>,
+    );
 
     type ViewQuery = ();
 
-    type ItemQuery = Read<DynamicUniformOffset>;
+    type ItemQuery = (Read<DynamicUniformOffset>, Read<ExtractedTilemap>);
 
     fn render<'w>(
         _item: &Transparent2d,
         _view: ROQueryItem<'w, Self::ViewQuery>,
-        offset: Option<ROQueryItem<'w, Self::ItemQuery>>,
-        bind_groups: SystemParamItem<'w, '_, Self::Param>,
+        Some((offset, tilemap)): Option<ROQueryItem<'w, Self::ItemQuery>>,
+        (render_device, buffer, pipeline, image_assets): SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
-        pass.set_bind_group(
-            I,
-            bind_groups.into_inner().uniforms.as_ref().unwrap(),
-            &[offset.unwrap().offset],
+        let Some(buffer) = buffer.buffer.binding() else {
+            return RenderCommandResult::Failure;
+        };
+
+        let bind_group = render_device.create_bind_group(
+            "",
+            &pipeline.tilemap_layout,
+            &BindGroupEntries::sequential((
+                buffer,
+                pipeline.linear_sampler,
+                image_assets.get(tilemap.texture),
+            )),
         );
+
+        pass.set_bind_group(I, &[offset.unwrap().offset]);
         RenderCommandResult::Success
     }
 }
@@ -540,6 +608,7 @@ impl<const I: usize> RenderCommand<Transparent2d> for SetTilemapAnimationBindGro
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
         pass.set_bind_group(I, &bind_groups.into_inner().animations[&item.entity], &[]);
+
         RenderCommandResult::Success
     }
 }
@@ -567,6 +636,7 @@ impl RenderCommand<Transparent2d> for DrawTilemapMesh {
             .gpu_mesh
             .as_ref()
             .unwrap();
+
         pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
         match &mesh.buffer_info {
             GpuBufferInfo::Indexed {
@@ -574,6 +644,7 @@ impl RenderCommand<Transparent2d> for DrawTilemapMesh {
                 count,
                 index_format,
             } => {
+                println!("draw!");
                 pass.set_index_buffer(buffer.slice(..), 0, *index_format);
                 pass.draw_indexed(0..*count, 0, 0..1);
             }
