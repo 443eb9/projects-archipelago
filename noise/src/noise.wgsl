@@ -7,6 +7,10 @@
 #import noise_funcs::value::noise_main
 #endif
 
+#ifdef PERLIN
+#import noise_funcs::perlin::noise_main
+#endif
+
 @group(0) @binding(0) var<uniform> noise: NoiseSettings;
 
 @fragment

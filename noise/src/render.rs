@@ -40,6 +40,7 @@ const NOISE_TYPES_SHADER: Handle<Shader> = Handle::weak_from_u128(89465132048951
 const HASH_SHADER: Handle<Shader> = Handle::weak_from_u128(798749816004806461564689531);
 
 const VALUE_NOISE_SHADER: Handle<Shader> = Handle::weak_from_u128(7845120894513845124510);
+const PERLIN_NOISE_SHADER: Handle<Shader> = Handle::weak_from_u128(487512048512048756120);
 
 pub struct NoisePlugin;
 
@@ -58,6 +59,12 @@ impl Plugin for NoisePlugin {
             app,
             VALUE_NOISE_SHADER,
             "noise_funcs/value.wgsl",
+            Shader::from_wgsl
+        );
+        load_internal_asset!(
+            app,
+            PERLIN_NOISE_SHADER,
+            "noise_funcs/perlin.wgsl",
             Shader::from_wgsl
         );
 
@@ -86,6 +93,7 @@ impl Plugin for NoisePlugin {
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Reflect)]
 pub enum NoiseType {
     Value,
+    Perlin,
 }
 
 #[derive(Resource, ExtractResource, Clone, Reflect)]
@@ -98,7 +106,7 @@ pub struct NoiseSettings {
 impl Default for NoiseSettings {
     fn default() -> Self {
         Self {
-            ty: NoiseType::Value,
+            ty: NoiseType::Perlin,
             scale: 10.,
         }
     }
@@ -156,6 +164,7 @@ impl SpecializedRenderPipeline for NoisePipeline {
         shader_defs.push(
             match key.ty {
                 NoiseType::Value => "VALUE",
+                NoiseType::Perlin => "PERLIN",
             }
             .into(),
         );
