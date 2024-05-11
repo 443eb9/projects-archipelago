@@ -3,7 +3,7 @@
 #import noise::{hash::hash22, types::NoiseSettings}
 
 fn dot_gradiant(p0: vec2f, p: vec2f) -> f32 {
-    return dot(hash22(p0) * vec2f(2.) - vec2f(1.), p - p0);
+    return dot(normalize(hash22(p0) * vec2f(2.) - vec2f(1.)), p - p0);
 }
 
 fn fade(x: f32) -> f32 {

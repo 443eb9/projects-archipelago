@@ -22,14 +22,14 @@ fn main() {
         .add_plugins((
             DefaultPlugins.set(WindowPlugin {
                 primary_window: Some(Window {
-                    resizable: false,
-                    resolution: WindowResolution::new(205., 205.),
+                    // resizable: false,
+                    // resolution: WindowResolution::new(205., 205.),
                     ..Default::default()
                 }),
                 ..Default::default()
             }),
             NoisePlugin,
-            // WorldInspectorPlugin::default(),
+            WorldInspectorPlugin::default(),
         ))
         .add_systems(Startup, setup)
         .add_systems(Update, screenshot)

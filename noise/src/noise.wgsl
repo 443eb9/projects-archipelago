@@ -11,6 +11,10 @@
 #import noise_funcs::perlin::noise_main
 #endif
 
+#ifdef SIMPLEX
+#import noise_funcs::simplex::noise_main
+#endif
+
 @group(0) @binding(0) var<uniform> noise: NoiseSettings;
 
 @fragment
