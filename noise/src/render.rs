@@ -42,6 +42,7 @@ const HASH_SHADER: Handle<Shader> = Handle::weak_from_u128(798749816004806461564
 const VALUE_NOISE_SHADER: Handle<Shader> = Handle::weak_from_u128(7845120894513845124510);
 const PERLIN_NOISE_SHADER: Handle<Shader> = Handle::weak_from_u128(487512048512048756120);
 const SIMPLEX_NOISE_SHADER: Handle<Shader> = Handle::weak_from_u128(98746510574501685064331);
+const VORONOI_NOISE_SHADER: Handle<Shader> = Handle::weak_from_u128(745120784512048751204512);
 
 pub struct NoisePlugin;
 
@@ -74,6 +75,12 @@ impl Plugin for NoisePlugin {
             "noise_funcs/simplex.wgsl",
             Shader::from_wgsl
         );
+        load_internal_asset!(
+            app,
+            VORONOI_NOISE_SHADER,
+            "noise_funcs/voronoi.wgsl",
+            Shader::from_wgsl
+        );
 
         app.add_plugins(ExtractResourcePlugin::<NoiseSettings>::default())
             .init_resource::<NoiseSettings>()
@@ -103,12 +110,21 @@ pub enum NoiseType {
     Value,
     Perlin,
     Simplex,
+    Voronoi,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Reflect)]
+pub enum DistanceFunction {
+    Euler,
+    Manhatten,
+    Chebyshev,
 }
 
 #[derive(Resource, ExtractResource, Clone, Reflect)]
 #[reflect(Resource)]
 pub struct NoiseSettings {
     pub ty: NoiseType,
+    pub dist_func: DistanceFunction,
     pub frequency: f32,
     pub amplitude: f32,
     pub enable_fbm: bool,
@@ -120,11 +136,12 @@ pub struct NoiseSettings {
 impl Default for NoiseSettings {
     fn default() -> Self {
         Self {
-            ty: NoiseType::Value,
+            ty: NoiseType::Simplex,
+            dist_func: DistanceFunction::Euler,
             frequency: 10.,
-            amplitude: 0.5,
-            enable_fbm: true,
-            enable_domain_warp: true,
+            amplitude: 1.,
+            enable_fbm: false,
+            enable_domain_warp: false,
             fbm: FBMSettings {
                 octaves: 6,
                 lacularity: 2.,
@@ -172,6 +189,7 @@ pub struct DomainWarpBuffer {
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct NoisePipelineKey {
     pub ty: NoiseType,
+    pub dist_func: DistanceFunction,
     pub enable_fbm: bool,
     pub enable_domain_warp: bool,
 }
@@ -217,6 +235,16 @@ impl SpecializedRenderPipeline for NoisePipeline {
                 NoiseType::Value => "VALUE",
                 NoiseType::Perlin => "PERLIN",
                 NoiseType::Simplex => "SIMPLEX",
+                NoiseType::Voronoi => "VORONOI",
+            }
+            .into(),
+        );
+
+        shader_defs.push(
+            match key.dist_func {
+                DistanceFunction::Euler => "EULER",
+                DistanceFunction::Manhatten => "MANHATTEN",
+                DistanceFunction::Chebyshev => "CHEBYSHEV",
             }
             .into(),
         );
@@ -269,6 +297,7 @@ fn prepare(
         &pipeline,
         NoisePipelineKey {
             ty: noise_settings.ty,
+            dist_func: noise_settings.dist_func,
             enable_fbm: noise_settings.enable_fbm,
             enable_domain_warp: noise_settings.enable_domain_warp,
         },

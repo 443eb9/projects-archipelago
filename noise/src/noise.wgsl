@@ -15,6 +15,10 @@
 #import noise_funcs::simplex::noise_main
 #endif
 
+#ifdef VORONOI
+#import noise_funcs::voronoi::noise_main
+#endif
+
 @group(0) @binding(0) var<uniform> noise: NoiseSettings;
 @group(0) @binding(1) var<storage> dw_settings: array<DomainWarpSettings>;
 
