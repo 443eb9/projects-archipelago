@@ -24,7 +24,7 @@ use bevy::{
             ColorTargetState, ColorWrites, DynamicUniformBuffer, FragmentState, MultisampleState,
             PipelineCache, PrimitiveState, RenderPassColorAttachment, RenderPassDescriptor,
             RenderPipelineDescriptor, Shader, ShaderStages, ShaderType, SpecializedRenderPipeline,
-            SpecializedRenderPipelines, TextureFormat,
+            SpecializedRenderPipelines, StorageBuffer, TextureFormat,
         },
         renderer::{RenderContext, RenderDevice, RenderQueue},
         texture::BevyDefault,
@@ -83,6 +83,7 @@ impl Plugin for NoisePlugin {
 
         render_app
             .init_resource::<NoiseUniformBuffer>()
+            .init_resource::<DomainWarpBuffer>()
             .add_systems(Render, prepare.in_set(RenderSet::Prepare))
             .add_render_graph_node::<ViewNodeRunner<NoiseNode>>(Core2d, NoiseNodeLabel)
             .add_render_graph_edges(Core2d, (Node2d::MainPass, NoiseNodeLabel, Node2d::Bloom));
@@ -111,7 +112,9 @@ pub struct NoiseSettings {
     pub frequency: f32,
     pub amplitude: f32,
     pub enable_fbm: bool,
+    pub enable_domain_warp: bool,
     pub fbm: FBMSettings,
+    pub domain_warp: Vec<DomainWarpSettings>,
 }
 
 impl Default for NoiseSettings {
@@ -121,11 +124,16 @@ impl Default for NoiseSettings {
             frequency: 10.,
             amplitude: 0.5,
             enable_fbm: true,
+            enable_domain_warp: true,
             fbm: FBMSettings {
-                octaves: 4,
+                octaves: 6,
                 lacularity: 2.,
                 gain: 0.5,
             },
+            domain_warp: vec![DomainWarpSettings {
+                offset_a: Vec2 { x: 0., y: 0. },
+                offset_b: Vec2 { x: 5.2, y: 1.3 },
+            }],
         }
     }
 }
@@ -135,6 +143,12 @@ pub struct FBMSettings {
     pub octaves: u32,
     pub lacularity: f32,
     pub gain: f32,
+}
+
+#[derive(ShaderType, Clone, Copy, Reflect)]
+pub struct DomainWarpSettings {
+    pub offset_a: Vec2,
+    pub offset_b: Vec2,
 }
 
 #[derive(ShaderType)]
@@ -150,10 +164,16 @@ pub struct NoiseUniformBuffer {
     pub value: DynamicUniformBuffer<NoiseUniform>,
 }
 
+#[derive(Resource, Default)]
+pub struct DomainWarpBuffer {
+    pub value: StorageBuffer<Vec<DomainWarpSettings>>,
+}
+
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct NoisePipelineKey {
     pub ty: NoiseType,
     pub enable_fbm: bool,
+    pub enable_domain_warp: bool,
 }
 
 #[derive(Resource)]
@@ -169,9 +189,12 @@ impl FromWorld for NoisePipeline {
 
         let layout = render_device.create_bind_group_layout(
             None,
-            &BindGroupLayoutEntries::single(
+            &BindGroupLayoutEntries::sequential(
                 ShaderStages::FRAGMENT,
-                binding::uniform_buffer::<NoiseUniform>(false),
+                (
+                    binding::uniform_buffer::<NoiseUniform>(false),
+                    binding::storage_buffer_read_only::<Vec<DomainWarpSettings>>(false),
+                ),
             ),
         );
 
@@ -202,6 +225,10 @@ impl SpecializedRenderPipeline for NoisePipeline {
             shader_defs.push("FBM".into());
         }
 
+        if key.enable_domain_warp {
+            shader_defs.push("DOMAIN_WARP".into());
+        }
+
         RenderPipelineDescriptor {
             label: None,
             layout: vec![self.layout.clone()],
@@ -228,6 +255,7 @@ fn prepare(
     main_view_query: Query<&ExtractedView>,
     noise_settings: Res<NoiseSettings>,
     mut noise_uniform_buffer: ResMut<NoiseUniformBuffer>,
+    mut domain_warp_buffer: ResMut<DomainWarpBuffer>,
     mut sp_pipelines: ResMut<SpecializedRenderPipelines<NoisePipeline>>,
     mut pipeline: ResMut<NoisePipeline>,
     pipeline_cache: Res<PipelineCache>,
@@ -242,6 +270,7 @@ fn prepare(
         NoisePipelineKey {
             ty: noise_settings.ty,
             enable_fbm: noise_settings.enable_fbm,
+            enable_domain_warp: noise_settings.enable_domain_warp,
         },
     ));
 
@@ -256,6 +285,13 @@ fn prepare(
         fbm: noise_settings.fbm,
     });
     noise_uniform_buffer
+        .value
+        .write_buffer(&render_device, &render_queue);
+
+    domain_warp_buffer
+        .value
+        .set(noise_settings.domain_warp.clone());
+    domain_warp_buffer
         .value
         .write_buffer(&render_device, &render_queue);
 }
@@ -283,7 +319,11 @@ impl ViewNode for NoiseNode {
         else {
             return Ok(());
         };
+
         let Some(noise_uniform) = world.resource::<NoiseUniformBuffer>().value.binding() else {
+            return Ok(());
+        };
+        let Some(domain_warp_storage) = world.resource::<DomainWarpBuffer>().value.binding() else {
             return Ok(());
         };
 
@@ -292,7 +332,7 @@ impl ViewNode for NoiseNode {
         let bind_group = render_context.render_device().create_bind_group(
             None,
             &pipeline.layout,
-            &BindGroupEntries::single(noise_uniform),
+            &BindGroupEntries::sequential((noise_uniform, domain_warp_storage)),
         );
 
         let mut pass = render_context.begin_tracked_render_pass(RenderPassDescriptor {

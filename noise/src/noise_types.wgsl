@@ -12,3 +12,8 @@ struct FBMSettings {
     lacularity: f32,
     gain: f32,
 }
+
+struct DomainWarpSettings {
+    offset_a: vec2f,
+    offset_b: vec2f,
+}
