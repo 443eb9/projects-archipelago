@@ -1,6 +1,6 @@
 #define_import_path noise_funcs::simplex
 
-#import noise::{hash::hash22, types::NoiseSettings}
+#import noise::hash::hash22
 
 // xy -> uv
 const F = 0.3660254037;
@@ -11,12 +11,10 @@ fn dot_gradiant(p0: vec2f, o: vec2f) -> f32 {
     return dot(normalize(hash22(p0) * vec2f(2.) - vec2f(1.)), o);
 }
 
-fn noise_main(p: vec2f, settings: NoiseSettings) -> f32 {
-    let np = p * settings.scale;
-    
+fn noise_main(p: vec2f) -> f32 {
     // Skew to figure out the cell id
-    let coe1 = F * (np.x + np.y);
-    let sp = np + vec2f(coe1);
+    let coe1 = F * (p.x + p.y);
+    let sp = p + vec2f(coe1);
     let cell_id = floor(sp);
 
     let coe2 = G * (cell_id.x + cell_id.y);
@@ -25,7 +23,7 @@ fn noise_main(p: vec2f, settings: NoiseSettings) -> f32 {
 
     // Now skew it back
     let v0 = cell_id + vec2f(coe2);
-    let o0 = np - v0;
+    let o0 = p - v0;
     let d0 = dot(o0, o0);
 
     var dx = 0.;
@@ -36,11 +34,11 @@ fn noise_main(p: vec2f, settings: NoiseSettings) -> f32 {
     }
 
     let v1 = v0 + vec2f(dx, dy) + vec2f(G);
-    let o1 = np - v1;
+    let o1 = p - v1;
     let d1 = dot(o1, o1);
 
     let v2 = v0 + vec2f(1.) + vec2f(2. * G);
-    let o2 = np - v2;
+    let o2 = p - v2;
     let d2 = dot(o2, o2);
 
     var n0 = 0.;
@@ -58,5 +56,5 @@ fn noise_main(p: vec2f, settings: NoiseSettings) -> f32 {
         n2 = dot_gradiant(v2, o2) * pow(0.5 - d2, 4.);
     }
 
-    return 70. * (n0 + n1 + n2);
+    return 70. * (n0 + n1 + n2) * 0.5 + 0.5;
 }

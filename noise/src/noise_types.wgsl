@@ -2,5 +2,13 @@
 
 struct NoiseSettings {
     aspect: vec2f,
-    scale: f32,
+    frequency: f32,
+    amplitude: f32,
+    fbm: FBMSettings,
+}
+
+struct FBMSettings {
+    octaves: u32,
+    lacularity: f32,
+    gain: f32,
 }

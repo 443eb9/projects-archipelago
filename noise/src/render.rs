@@ -108,22 +108,41 @@ pub enum NoiseType {
 #[reflect(Resource)]
 pub struct NoiseSettings {
     pub ty: NoiseType,
-    pub scale: f32,
+    pub frequency: f32,
+    pub amplitude: f32,
+    pub enable_fbm: bool,
+    pub fbm: FBMSettings,
 }
 
 impl Default for NoiseSettings {
     fn default() -> Self {
         Self {
-            ty: NoiseType::Simplex,
-            scale: 10.,
+            ty: NoiseType::Value,
+            frequency: 10.,
+            amplitude: 0.5,
+            enable_fbm: true,
+            fbm: FBMSettings {
+                octaves: 4,
+                lacularity: 2.,
+                gain: 0.5,
+            },
         }
     }
+}
+
+#[derive(ShaderType, Clone, Copy, Reflect)]
+pub struct FBMSettings {
+    pub octaves: u32,
+    pub lacularity: f32,
+    pub gain: f32,
 }
 
 #[derive(ShaderType)]
 pub struct NoiseUniform {
     pub aspect: Vec2,
-    pub scale: f32,
+    pub frequency: f32,
+    pub amplitude: f32,
+    pub fbm: FBMSettings,
 }
 
 #[derive(Resource, Default)]
@@ -134,6 +153,7 @@ pub struct NoiseUniformBuffer {
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct NoisePipelineKey {
     pub ty: NoiseType,
+    pub enable_fbm: bool,
 }
 
 #[derive(Resource)]
@@ -178,6 +198,10 @@ impl SpecializedRenderPipeline for NoisePipeline {
             .into(),
         );
 
+        if key.enable_fbm {
+            shader_defs.push("FBM".into());
+        }
+
         RenderPipelineDescriptor {
             label: None,
             layout: vec![self.layout.clone()],
@@ -217,6 +241,7 @@ fn prepare(
         &pipeline,
         NoisePipelineKey {
             ty: noise_settings.ty,
+            enable_fbm: noise_settings.enable_fbm,
         },
     ));
 
@@ -226,7 +251,9 @@ fn prepare(
             main_view.projection.y_axis[1] / main_view.projection.x_axis[0],
             1.,
         ),
-        scale: noise_settings.scale,
+        frequency: noise_settings.frequency,
+        amplitude: noise_settings.amplitude,
+        fbm: noise_settings.fbm,
     });
     noise_uniform_buffer
         .value
