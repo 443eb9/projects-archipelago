@@ -18,6 +18,10 @@ impl Transform {
     pub fn local_move(&mut self, x: Vec3) {
         self.translation += self.rotation.mul_vec3(x);
     }
+
+    pub fn rotate(&mut self, axis: Vec3, angle: f32) {
+        self.rotation = self.rotation.mul_quat(Quat::from_axis_angle(axis, angle));
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

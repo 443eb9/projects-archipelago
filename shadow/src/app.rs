@@ -3,10 +3,10 @@ use std::{
     f32::consts::FRAC_PI_4,
     sync::{Arc, Mutex},
     thread,
-    time::Duration,
+    time::Instant,
 };
 
-use glam::{UVec2, Vec3};
+use glam::{UVec2, Vec2, Vec3};
 use wgpu::{ShaderSource, TextureFormat};
 use wgpu_renderer::{
     scene::{Camera, DirectionalLight, Transform},
@@ -15,7 +15,7 @@ use wgpu_renderer::{
 use winit::{
     application::ApplicationHandler,
     dpi::{PhysicalSize, Size},
-    event::WindowEvent,
+    event::{DeviceEvent, DeviceId, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop},
     keyboard::PhysicalKey,
     window::{Window, WindowAttributes, WindowId},
@@ -26,13 +26,12 @@ use crate::scene::{CameraConfig, ControllableCamera};
 pub struct Application<'w> {
     pub renderer: WgpuSurfaceRenderer<'w>,
     window: Arc<Window>,
-    fps: f32,
 
     main_camera: Arc<Mutex<ControllableCamera>>,
 }
 
 impl<'w> Application<'w> {
-    pub async fn new(event_loop: &EventLoop<()>, dim: UVec2, fps: f32) -> Self {
+    pub async fn new(event_loop: &EventLoop<()>, dim: UVec2) -> Self {
         #[allow(deprecated)]
         let window = Arc::new(
             event_loop
@@ -78,7 +77,6 @@ impl<'w> Application<'w> {
         Self {
             renderer,
             window,
-            fps,
 
             main_camera: Arc::new(Mutex::new(main_camera)),
         }
@@ -118,6 +116,7 @@ impl<'w> ApplicationHandler for Application<'w> {
                 self.renderer.renderer_mut().write_scene();
                 self.renderer.draw();
             }
+            WindowEvent::Resized(size) => self.renderer.resize(UVec2::new(size.width, size.height)),
             WindowEvent::CloseRequested => std::process::exit(0),
             WindowEvent::KeyboardInput {
                 device_id: _,
@@ -128,10 +127,37 @@ impl<'w> ApplicationHandler for Application<'w> {
                     return;
                 };
                 match event.physical_key {
-                    PhysicalKey::Code(key) => main_camera.control(key),
+                    PhysicalKey::Code(key) => main_camera.keyboard_control(key, &event.state),
                     PhysicalKey::Unidentified(_) => {}
                 }
-            },
+            }
+            WindowEvent::MouseInput {
+                device_id: _,
+                state,
+                button,
+            } => {
+                let Ok(mut main_camera) = self.main_camera.lock() else {
+                    return;
+                };
+                main_camera.mouse_control(button, &state);
+            }
+            _ => {}
+        }
+    }
+
+    fn device_event(
+        &mut self,
+        _event_loop: &ActiveEventLoop,
+        _device_id: DeviceId,
+        event: DeviceEvent,
+    ) {
+        match event {
+            DeviceEvent::MouseMotion { delta } => {
+                let Ok(mut main_camera) = self.main_camera.lock() else {
+                    return;
+                };
+                main_camera.mouse_move(Vec2::new(delta.0 as f32, delta.1 as f32));
+            }
             _ => {}
         }
     }

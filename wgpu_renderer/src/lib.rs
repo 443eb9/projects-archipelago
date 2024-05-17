@@ -2,6 +2,7 @@ use std::{
     fs::File,
     io::{Read, Write},
     path::Path,
+    time::Instant,
 };
 
 use buffer::StorageBuffer;
@@ -17,10 +18,31 @@ pub mod buffer;
 pub mod render;
 pub mod scene;
 
+fn create_depth_targets(device: &Device, dim: UVec2) -> (Texture, TextureView) {
+    let target = device.create_texture(&TextureDescriptor {
+        label: None,
+        size: Extent3d {
+            width: dim.x,
+            height: dim.y,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: TextureDimension::D2,
+        format: TextureFormat::Depth24Plus,
+        usage: TextureUsages::RENDER_ATTACHMENT,
+        view_formats: &[TextureFormat::Depth24Plus],
+    });
+    let target_view = target.create_view(&TextureViewDescriptor::default());
+    (target, target_view)
+}
+
 pub struct WgpuImageRenderer {
     internal: WgpuRenderer,
     target: Texture,
     target_view: TextureView,
+    depth_target: Texture,
+    depth_target_view: TextureView,
 }
 
 impl WgpuImageRenderer {
@@ -29,9 +51,10 @@ impl WgpuImageRenderer {
         shader: ShaderSource<'_>,
         renderer_config: Option<RendererConfig>,
     ) -> Self {
-        let renderer = WgpuRenderer::new(shader, renderer_config).await;
+        let renderer = WgpuRenderer::new(shader, renderer_config.clone()).await;
+        let config = renderer_config.unwrap_or_default();
 
-        let target = renderer.device().create_texture(&TextureDescriptor {
+        let target = renderer.device.create_texture(&TextureDescriptor {
             label: None,
             size: Extent3d {
                 width: dim.x,
@@ -41,16 +64,20 @@ impl WgpuImageRenderer {
             mip_level_count: 1,
             sample_count: 1,
             dimension: TextureDimension::D2,
-            format: TextureFormat::Rgba8Unorm,
-            usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::COPY_SRC,
-            view_formats: &[TextureFormat::Rgba8Unorm],
+            format: config.primary_target_format,
+            usage: TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[config.primary_target_format],
         });
         let target_view = target.create_view(&TextureViewDescriptor::default());
+
+        let (depth_target, depth_target_view) = create_depth_targets(&renderer.device, dim);
 
         Self {
             internal: renderer,
             target,
             target_view,
+            depth_target,
+            depth_target_view,
         }
     }
 
@@ -65,7 +92,8 @@ impl WgpuImageRenderer {
     }
 
     pub async fn draw(&mut self) {
-        self.internal.draw(&self.target_view);
+        self.internal
+            .draw(&self.target_view, &self.depth_target_view);
     }
 
     pub async fn save_result(&self, path: impl AsRef<Path>) {
@@ -142,6 +170,10 @@ impl WgpuImageRenderer {
 pub struct WgpuSurfaceRenderer<'r> {
     internal: WgpuRenderer,
     surface: Surface<'r>,
+    depth_target: Texture,
+    depth_target_view: TextureView,
+    last_printed_instant: Instant,
+    frame_count: u32,
 }
 
 impl<'r> WgpuSurfaceRenderer<'r> {
@@ -153,16 +185,23 @@ impl<'r> WgpuSurfaceRenderer<'r> {
     ) -> Self {
         let renderer = WgpuRenderer::new(shader, renderer_config).await;
         let surface = renderer.instance.create_surface(target).unwrap();
+        let (depth_target, depth_target_view) = create_depth_targets(&renderer.device, dim);
 
-        let sr = Self {
+        let mut sr = Self {
             internal: renderer,
             surface,
+            depth_target,
+            depth_target_view,
+            last_printed_instant: Instant::now(),
+            frame_count: 0,
         };
         sr.resize(dim);
         sr
     }
 
-    pub fn resize(&self, dim: UVec2) {
+    pub fn resize(&mut self, dim: UVec2) {
+        (self.depth_target, self.depth_target_view) =
+            create_depth_targets(&self.internal.device, dim);
         self.surface.configure(
             &self.internal.device,
             &SurfaceConfiguration {
@@ -175,14 +214,30 @@ impl<'r> WgpuSurfaceRenderer<'r> {
         );
     }
 
-    pub fn draw(&self) {
+    pub fn draw(&mut self) {
         let Ok(frame) = self.surface.get_current_texture() else {
             log::error!("Failed to acquire next swap chain texture.");
             return;
         };
         let view = frame.texture.create_view(&TextureViewDescriptor::default());
-        self.internal.draw(&view);
+        self.internal.draw(&view, &self.depth_target_view);
+        self.update_frame_counter();
         frame.present();
+    }
+
+    fn update_frame_counter(&mut self) {
+        self.frame_count += 1;
+        let new_instant = Instant::now();
+        let elapsed_secs = (new_instant - self.last_printed_instant).as_secs_f32();
+        if elapsed_secs > 1.0 {
+            let elapsed_ms = elapsed_secs * 1000.0;
+            let frame_time = elapsed_ms / self.frame_count as f32;
+            let fps = self.frame_count as f32 / elapsed_secs;
+            log::info!("Frame time {:.2}ms ({:.1} FPS)", frame_time, fps);
+
+            self.last_printed_instant = new_instant;
+            self.frame_count = 0;
+        }
     }
 
     #[inline]
@@ -196,6 +251,7 @@ impl<'r> WgpuSurfaceRenderer<'r> {
     }
 }
 
+#[derive(Clone)]
 pub struct RendererConfig {
     pub primary_target_format: TextureFormat,
     pub clear_color: Color,
@@ -307,14 +363,16 @@ impl WgpuRenderer {
                 module: &shader_module,
                 entry_point: "fragment",
                 compilation_options: PipelineCompilationOptions::default(),
-                targets: &[Some(ColorTargetState {
-                    format: config.primary_target_format,
-                    blend: Some(BlendState::ALPHA_BLENDING),
-                    write_mask: ColorWrites::ALL,
-                })],
+                targets: &[Some(config.primary_target_format.into())],
             }),
             primitive: PrimitiveState::default(),
-            depth_stencil: None,
+            depth_stencil: Some(DepthStencilState {
+                format: TextureFormat::Depth24Plus,
+                depth_write_enabled: true,
+                depth_compare: CompareFunction::LessEqual,
+                stencil: StencilState::default(),
+                bias: DepthBiasState::default(),
+            }),
             multisample: MultisampleState::default(),
             multiview: None,
         });
@@ -386,7 +444,7 @@ impl WgpuRenderer {
         }));
     }
 
-    pub fn draw(&self, target: &TextureView) {
+    pub fn draw(&self, color_target: &TextureView, depth_target: &TextureView) {
         let Some(scene) = &self.scene_bind_group else {
             log::error!("Failed to get bind group for scene.");
             return;
@@ -400,13 +458,21 @@ impl WgpuRenderer {
             let mut pass = command_encoder.begin_render_pass(&RenderPassDescriptor {
                 label: None,
                 color_attachments: &[Some(RenderPassColorAttachment {
-                    view: target,
+                    view: color_target,
                     resolve_target: None,
                     ops: Operations {
                         load: LoadOp::Clear(self.config.clear_color),
                         store: StoreOp::Store,
                     },
                 })],
+                depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
+                    view: depth_target,
+                    depth_ops: Some(Operations {
+                        load: LoadOp::Clear(1.),
+                        store: StoreOp::Discard,
+                    }),
+                    stencil_ops: None,
+                }),
                 ..Default::default()
             });
 

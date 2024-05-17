@@ -38,9 +38,10 @@ fn fragment(input: VertexOutput) -> @location(0) vec4f {
 
     for (var i_light = 0u; i_light < arrayLength(&dir_lights); i_light += 1u) {
         let light = &dir_lights[i_light];
-        color += dot(normalize((*light).pos - input.position_ws), input.normal_ws) * (*light).col;
+        // color += dot(normalize((*light).pos - input.position_ws), input.normal_ws) * (*light).col;
+        color = (*light).col;
     }
 
-    // return vec4f(color, 1.);
-    return vec4f(input.normal_ws, 1.);
+    return vec4f(color, 1.);
+    // return vec4f(input.normal_ws, 1.);
 }

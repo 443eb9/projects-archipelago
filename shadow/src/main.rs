@@ -46,7 +46,7 @@ async fn render_to_image(dim: UVec2) {
 
 async fn realtime_render(dim: UVec2) {
     let event_loop = EventLoop::new().unwrap();
-    let mut app = Application::new(&event_loop, dim, 144.).await;
+    let mut app = Application::new(&event_loop, dim).await;
     app.run();
     event_loop.run_app(&mut app).unwrap();
 }
