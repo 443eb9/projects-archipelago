@@ -1,37 +1,37 @@
 use glam::{Mat4, Quat, Vec3};
-use macros::ShaderData;
 
-use crate::render::ShaderData;
-
-pub struct Camera {
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Transform {
     pub translation: Vec3,
     pub rotation: Quat,
+}
+
+impl Transform {
+    pub fn transform_point(&self, p: Vec3) -> Vec3 {
+        self.rotation.mul_vec3(p) + self.translation
+    }
+
+    pub fn compute_matrix(&self) -> Mat4 {
+        Mat4::from_rotation_translation(self.rotation, self.translation)
+    }
+
+    pub fn local_move(&mut self, x: Vec3) {
+        self.translation += self.rotation.mul_vec3(x);
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Camera {
+    pub transform: Transform,
     pub fov: f32,
+    pub aspect_ratio: f32,
     pub near: f32,
     pub far: f32,
 }
 
-#[derive(Default)]
-pub struct GpuCamera {
-    pub view: Mat4,
-    pub proj: Mat4,
-}
-
-impl ShaderData for GpuCamera {
-    fn size() -> usize {
-        std::mem::size_of::<Mat4>() * 2
-    }
-
-    fn as_raw(&self) -> Vec<u8> {
-        let mut buf = Vec::with_capacity(std::mem::size_of::<Self>());
-        buf.extend_from_slice(bytemuck::cast_slice(self.view.as_ref()));
-        buf.extend_from_slice(bytemuck::cast_slice(self.proj.as_ref()));
-        buf
-    }
-}
-
-#[derive(ShaderData)]
+#[derive(Debug, Clone, Copy)]
 pub struct DirectionalLight {
-    pub position: Vec3,
+    pub translation: Vec3,
     pub direction: Vec3,
+    pub color: Vec3,
 }

@@ -1,9 +1,3 @@
 [workspace]
-members = [
-    "wgpu_renderer",
-    "wgpu_renderer/macros",
-    "bevy_rendering-3",
-    "noise",
-    "shadow",
-]
+members = ["wgpu_renderer", "bevy_rendering-3", "noise", "shadow"]
 resolver = "1"

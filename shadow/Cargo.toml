@@ -14,3 +14,4 @@ png = "0.17.13"
 pollster = "0.3"
 wgpu = "0.20"
 wgpu_renderer = { version = "0.1", path = "../wgpu_renderer" }
+winit = "0.30"
